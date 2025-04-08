@@ -327,6 +327,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
+    
     // Function to capture jersey as image
     async function captureJerseyAsImage() {
         return new Promise((resolve, reject) => {
