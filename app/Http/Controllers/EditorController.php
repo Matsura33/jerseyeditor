@@ -7,6 +7,7 @@ use App\Models\UserJersey;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Storage;
 
 class EditorController extends Controller
 {
@@ -220,5 +221,50 @@ class EditorController extends Controller
         }
         
         return $generatedImages;
+    }
+
+    public function save(Request $request)
+    {
+        try {
+            $request->validate([
+                'jersey_id' => 'required|exists:jerseys,id',
+                'image' => 'required|file|image|max:10240', // Max 10MB
+                'texture' => 'required|file|image|max:10240', // Max 10MB
+                'prompt' => 'nullable|string',
+                'texture_size' => 'required|integer|min:0|max:200',
+                'ornaments_data' => 'required|json'
+            ]);
+
+            // Sauvegarder l'image du jersey dans users_jerseys
+            $jerseyImagePath = $request->file('image')->store('users_jerseys', 'public');
+
+            // Sauvegarder la texture modifiée dans users_textures
+            $texturePath = $request->file('texture')->store('users_textures', 'public');
+
+            // Créer un nouveau UserJersey
+            $userJersey = auth()->user()->jerseys()->create([
+                'jersey_id' => $request->jersey_id,
+                'image_url' => $jerseyImagePath,
+                'texture_url' => $texturePath,
+                'texture_size' => $request->texture_size,
+                'prompt' => $request->prompt,
+                'ornaments_data' => $request->ornaments_data
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Jersey sauvegardé avec succès',
+                'redirect_url' => route('editor.index')
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error('Error saving jersey: ' . $e->getMessage());
+            \Log::error($e->getTraceAsString());
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Une erreur est survenue lors de la sauvegarde : ' . $e->getMessage()
+            ], 500);
+        }
     }
 } 

@@ -70,6 +70,7 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/editor/jersey/{jersey}', [\App\Http\Controllers\EditorController::class, 'edit'])->name('editor.edit');
     Route::post('/editor/store', [\App\Http\Controllers\EditorController::class, 'store'])->name('editor.store');
     Route::post('/editor/send-prompt', [\App\Http\Controllers\EditorController::class, 'sendPrompt'])->name('editor.sendPrompt');
+    Route::post('/editor/save', [\App\Http\Controllers\EditorController::class, 'save'])->name('editor.save');
 });
 
 require __DIR__.'/auth.php';

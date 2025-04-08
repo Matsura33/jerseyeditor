@@ -327,25 +327,223 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
+    // Function to capture jersey as image
+    async function captureJerseyAsImage() {
+        return new Promise((resolve, reject) => {
+            const jerseyPreview = document.querySelector('.relative.w-full.max-w-2xl.aspect-square');
+            
+            // Create a canvas with the same dimensions as the preview
+            const canvas = document.createElement('canvas');
+            const width = jerseyPreview.offsetWidth;
+            const height = jerseyPreview.offsetHeight;
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+
+            // Load all images
+            const images = [];
+            const sources = [
+                { element: document.querySelector('img[alt="Base Jersey"]'), type: 'image' },
+                { element: textureLayer, type: 'background' },
+                { element: document.querySelector('img[alt="Shadow"]'), type: 'image' },
+                ...Array.from(ornamentsLayer.querySelectorAll('img')).map(img => ({ element: img, type: 'image' }))
+            ];
+
+            let loadedImages = 0;
+            
+            sources.forEach((source, index) => {
+                if (source.type === 'image') {
+                    const img = new Image();
+                    img.crossOrigin = 'anonymous';
+                    img.onload = () => {
+                        images[index] = img;
+                        loadedImages++;
+                        if (loadedImages === sources.length) drawCanvas();
+                    };
+                    img.onerror = reject;
+                    img.src = source.element.src;
+                } else if (source.type === 'background' && currentTextureUrl) {
+                    const img = new Image();
+                    img.crossOrigin = 'anonymous';
+                    img.onload = () => {
+                        const pattern = ctx.createPattern(img, 'repeat');
+                        images[index] = {
+                            pattern,
+                            size: currentTextureSize,
+                            position: texturePosition,
+                            hue: currentTextureHue
+                        };
+                        loadedImages++;
+                        if (loadedImages === sources.length) drawCanvas();
+                    };
+                    img.onerror = reject;
+                    img.src = currentTextureUrl;
+                } else {
+                    loadedImages++;
+                    if (loadedImages === sources.length) drawCanvas();
+                }
+            });
+
+            function drawCanvas() {
+                // Set white background
+                ctx.fillStyle = 'white';
+                ctx.fillRect(0, 0, width, height);
+
+                // Draw each layer
+                sources.forEach((source, index) => {
+                    if (!images[index]) return;
+
+                    if (source.type === 'background' && images[index].pattern) {
+                        // Save context state
+                        ctx.save();
+                        
+                        // Apply texture transformations
+                        const scale = images[index].size / 100;
+                        ctx.translate(images[index].position.x, images[index].position.y);
+                        ctx.scale(scale, scale);
+                        
+                        // Apply hue rotation
+                        if (images[index].hue !== 0) {
+                            ctx.filter = `hue-rotate(${images[index].hue}deg)`;
+                        }
+                        
+                        // Draw texture
+                        ctx.fillStyle = images[index].pattern;
+                        ctx.fillRect(-images[index].position.x/scale, -images[index].position.y/scale, width/scale, height/scale);
+                        
+                        // Restore context state
+                        ctx.restore();
+                    } else {
+                        ctx.drawImage(images[index], 0, 0, width, height);
+                    }
+                });
+
+                // Convert canvas to blob
+                canvas.toBlob((blob) => {
+                    resolve(blob);
+                }, 'image/png');
+            }
+        });
+    }
+
+    // Function to capture texture as image
+    async function captureTextureAsImage() {
+        return new Promise((resolve, reject) => {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            const img = new Image();
+            
+            // Set canvas size to match texture layer
+            canvas.width = textureLayer.offsetWidth;
+            canvas.height = textureLayer.offsetHeight;
+            
+            img.onload = function() {
+                try {
+                    // Create a temporary div to apply the same styles as the texture layer
+                    const tempDiv = document.createElement('div');
+                    tempDiv.style.width = `${canvas.width}px`;
+                    tempDiv.style.height = `${canvas.height}px`;
+                    tempDiv.style.backgroundImage = textureLayer.style.backgroundImage;
+                    tempDiv.style.backgroundSize = textureLayer.style.backgroundSize;
+                    tempDiv.style.backgroundPosition = textureLayer.style.backgroundPosition;
+                    tempDiv.style.backgroundRepeat = textureLayer.style.backgroundRepeat;
+                    
+                    // Draw the background pattern
+                    ctx.save();
+                    
+                    // Apply hue rotation if needed
+                    if (currentTextureHue !== 0) {
+                        ctx.filter = `hue-rotate(${currentTextureHue}deg)`;
+                    }
+                    
+                    // Create a pattern and draw it
+                    const pattern = ctx.createPattern(img, 'repeat');
+                    ctx.fillStyle = pattern;
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    
+                    ctx.restore();
+                    
+                    // Convert to blob
+                    canvas.toBlob(blob => {
+                        if (blob) {
+                            resolve(blob);
+                        } else {
+                            reject(new Error('Failed to create texture blob'));
+                        }
+                    }, 'image/png');
+                } catch (error) {
+                    reject(error);
+                }
+            };
+            
+            img.onerror = () => reject(new Error('Failed to load texture image'));
+            
+            // Remove the url() wrapper from the backgroundImage
+            const imageUrl = currentTextureUrl;
+            img.src = imageUrl;
+        });
+    }
+
     // Initialize everything
     initializeOrnaments();
     setupOrnamentNavigation();
 
     // Form submission
-    form.addEventListener('submit', function(e) {
+    form.addEventListener('submit', async function(e) {
         e.preventDefault();
         
-        // Ensure all required data is set
-        if (!currentTextureUrl) {
-            alert('Please select a texture');
-            return;
+        try {
+            console.log('Starting form submission...');
+            console.log('Form action:', form.action);
+            
+            const [jerseyBlob, textureBlob] = await Promise.all([
+                captureJerseyAsImage(),
+                captureTextureAsImage()
+            ]);
+            
+            console.log('Images captured successfully');
+            
+            const formData = new FormData();
+            formData.append('jersey_id', document.querySelector('input[name="jersey_id"]').value);
+            formData.append('image', jerseyBlob, 'jersey.png');
+            formData.append('texture', textureBlob, 'texture.png');
+            formData.append('prompt', promptTextarea.value || '');
+            formData.append('texture_size', currentTextureSize);
+            formData.append('ornaments_data', JSON.stringify(currentOrnaments));
+            formData.append('_token', document.querySelector('meta[name="csrf-token"]').content);
+            
+            console.log('FormData created with fields:', Array.from(formData.keys()));
+            console.log('Texture size value:', currentTextureSize);
+            console.log('Ornaments data:', currentOrnaments);
+            
+            const response = await fetch(form.action, {
+                method: 'POST',
+                body: formData
+            });
+            
+            console.log('Response status:', response.status);
+            console.log('Response headers:', Object.fromEntries(response.headers));
+            
+            const responseText = await response.text();
+            console.log('Raw response:', responseText);
+            
+            let result;
+            try {
+                result = JSON.parse(responseText);
+            } catch (error) {
+                console.error('Error parsing JSON response:', error);
+                throw new Error('Invalid JSON response from server');
+            }
+            
+            if (result.success) {
+                window.location.href = result.redirect_url;
+            } else {
+                alert(result.message || 'Une erreur est survenue lors de la sauvegarde');
+            }
+        } catch (error) {
+            console.error('Error saving jersey:', error);
+            console.error('Error details:', error.message);
+            alert('Une erreur est survenue lors de la sauvegarde : ' + error.message);
         }
-        
-        if (Object.keys(currentOrnaments).length === 0) {
-            alert('Please select at least one ornament');
-            return;
-        }
-        
-        this.submit();
     });
 }); 

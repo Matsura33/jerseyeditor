@@ -1,6 +1,6 @@
 <x-layouts.app>
     <div class="min-h-screen bg-gray-100">
-        <form id="jersey-form" action="{{ route('editor.store') }}" method="POST" class="flex h-screen">
+        <form id="jersey-form" action="{{ route('editor.save') }}" method="POST" class="flex h-screen">
             @csrf
             <input type="hidden" name="jersey_id" value="{{ $jersey->id }}">
             <input type="hidden" name="texture_url" id="texture-url">
